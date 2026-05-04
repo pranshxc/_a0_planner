@@ -17,8 +17,8 @@ def _load(chat_id: str) -> dict:
 class PlannerUserReply(Extension):
     """
     When status=awaiting_approval and a new user message arrives,
-    pre-parse 'approve' or 'revise:...' and inject a directive so the
-    agent calls the correct planner action immediately without reasoning loops.
+    pre-parse 'approve' or 'revise: ...' and inject a pinpoint directive
+    so the agent calls the correct planner action immediately.
     """
 
     async def execute(self, loop_data: LoopData = LoopData(), **kwargs):
@@ -38,27 +38,26 @@ class PlannerUserReply(Extension):
 
         user_msg = ""
         if loop_data.user_message:
-            user_msg = loop_data.user_message.output_text().strip().lower()
+            user_msg = loop_data.user_message.output_text().strip()
 
         if not user_msg:
             return
 
-        if user_msg.startswith("approve"):
+        u_lower = user_msg.lower()
+        if u_lower.startswith("approve"):
             loop_data.extras_persistent["planner_reply_directive"] = (
                 "## ✅ User Approved the Plan\n"
-                "The user replied 'approve'. "
-                "Call `planner` with `action=approve` immediately, then proceed to create the todo list."
+                "Call `planner` with `action=approve` as your FIRST action. "
+                "After that, proceed to create the todo list with `todo_manager`."
             )
-        elif user_msg.startswith("revise"):
-            feedback_raw = loop_data.user_message.output_text().strip()
-            # Extract everything after 'revise:' or 'revise '
-            if ":" in feedback_raw:
-                feedback = feedback_raw.split(":", 1)[1].strip()
+        elif u_lower.startswith("revise"):
+            if ":" in user_msg:
+                feedback = user_msg.split(":", 1)[1].strip()
             else:
-                parts = feedback_raw.split(None, 1)
-                feedback = parts[1].strip() if len(parts) > 1 else feedback_raw
+                parts = user_msg.split(None, 1)
+                feedback = parts[1].strip() if len(parts) > 1 else user_msg
             loop_data.extras_persistent["planner_reply_directive"] = (
-                f"## 🔄 User Requested Revision\n"
-                f"The user wants revisions: '{feedback}'\n"
-                "Call `planner` with `action=revise`, `feedback=<the user's exact feedback>` immediately."
+                f"## 🔄 User Requested Plan Revision\n"
+                f"Feedback: '{feedback}'\n"
+                "Call `planner` with `action=revise`, `feedback=<exact feedback>` as your FIRST action."
             )
