@@ -1,0 +1,7 @@
+name: _a0_planner
+title: Research Planner
+description: Before any task, runs a deep multi-pass research pipeline (base plan -> per-point web search + LLM reasoning -> refined plan) then presents the plan to the user for approval or revision. Runs before todo creation.
+version: 1.0.0
+always_enabled: true
+per_project_config: false
+per_agent_config: false
