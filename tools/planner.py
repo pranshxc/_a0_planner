@@ -5,6 +5,44 @@ from helpers.tool import Tool, Response
 
 PLAN_DIR = os.path.join("work", "plans")
 
+# HTML for interactive approve/revise buttons injected as a hint log message.
+# sendMessage() is the global A0 webui function that submits a chat message.
+_APPROVAL_BUTTONS_HTML = """
+<div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">
+  <button
+    onclick="window.sendMessage && window.sendMessage('approve')"
+    style="
+      padding:8px 20px;
+      background:#22c55e;
+      color:#fff;
+      border:none;
+      border-radius:8px;
+      font-size:14px;
+      font-weight:600;
+      cursor:pointer;
+    "
+    title="Approve this plan and begin execution"
+  >✅ Approve Plan</button>
+  <button
+    onclick="(function(){
+      var fb=prompt('Enter your revision feedback:');
+      if(fb && fb.trim()) window.sendMessage && window.sendMessage('revise: '+fb.trim());
+    })()"
+    style="
+      padding:8px 20px;
+      background:#f59e0b;
+      color:#fff;
+      border:none;
+      border-radius:8px;
+      font-size:14px;
+      font-weight:600;
+      cursor:pointer;
+    "
+    title="Request specific improvements to the plan"
+  >✏️ Suggest Changes</button>
+</div>
+"""
+
 
 def _plan_path(chat_id: str) -> str:
     os.makedirs(PLAN_DIR, exist_ok=True)
@@ -20,7 +58,7 @@ def _load(chat_id: str) -> dict:
 
 
 def _save(data: dict) -> None:
-    with open(_plan_path(data["chat_id"]), "w", encoding="utf-8") as f:
+    with open(_plan_path(data["chat_id"]), "w", encoding="utf-8) as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
@@ -93,7 +131,6 @@ class Planner(Tool):
             point["approaches"] = [str(a).strip() for a in (approaches or [])]
             point["researched"] = True
             _save(data)
-            # Tell agent what to do next — prevents loop
             remaining = [i for i, p in enumerate(data["plan"]) if not p.get("researched")]
             if remaining:
                 nxt = data["plan"][remaining[0]]
@@ -114,14 +151,27 @@ class Planner(Tool):
             data["status"] = "awaiting_approval"
             _save(data)
             rendered = _render_plan(data)
+
+            # Inject interactive approval buttons as a hint log entry.
+            # The hint type renders as standalone HTML in the A0 webui — buttons
+            # call window.sendMessage() which submits the message without reloading.
+            try:
+                self.agent.context.log.log(
+                    type="hint",
+                    heading="📋 Plan Review",
+                    content=_APPROVAL_BUTTONS_HTML,
+                )
+            except Exception:
+                pass  # non-fatal: text fallback in response is still shown
+
             msg = (
                 f"{rendered}\n\n"
                 "---\n"
-                "**Reply with one of:**\n"
-                "- `approve` — to approve this plan and begin execution\n"
-                "- `revise: <your suggestions>` — to request specific improvements\n"
+                "**Click a button above, or type your reply:**\n"
+                "- `approve` — approve this plan and begin execution\n"
+                "- `revise: <your suggestions>` — request specific improvements\n"
             )
-            # break_loop=True: ends monologue, chat stays open, waits for user reply
+            # break_loop=True ends the monologue and keeps the chat input active
             return Response(message=msg, break_loop=True)
 
         # ── approve ────────────────────────────────────────────────────────────
