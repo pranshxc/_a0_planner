@@ -58,7 +58,7 @@ def _load(chat_id: str) -> dict:
 
 
 def _save(data: dict) -> None:
-    with open(_plan_path(data["chat_id"]), "w", encoding="utf-8) as f:
+    with open(_plan_path(data["chat_id"]), "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
@@ -88,9 +88,24 @@ def _render_plan(data: dict) -> str:
 
 
 class Planner(Tool):
-    """Research & planning tool. Runs deep research pipeline and manages plan lifecycle."""
+    """Research & planning tool. Only available to the root agent (agent 0)."""
 
     async def execute(self, **kwargs) -> Response:
+        # ── Sub-agent guard ────────────────────────────────────────────────────
+        # The planner is a root-agent-only tool. Sub-agents (agent.number > 0)
+        # should never call it — doing so would create conflicting plans and
+        # potentially loop. Return a clear error so the sub-agent falls back to
+        # its actual task instead of retrying.
+        if getattr(self.agent, "number", 0) != 0:
+            return Response(
+                message=(
+                    "The planner tool is only available to the root agent. "
+                    "You are a sub-agent — do not call the planner. "
+                    "Focus on the specific task you were delegated."
+                ),
+                break_loop=False,
+            )
+
         action = (self.args.get("action") or "").strip().lower()
         chat_id = self._chat_id()
         data = _load(chat_id)
@@ -153,8 +168,6 @@ class Planner(Tool):
             rendered = _render_plan(data)
 
             # Inject interactive approval buttons as a hint log entry.
-            # The hint type renders as standalone HTML in the A0 webui — buttons
-            # call window.sendMessage() which submits the message without reloading.
             try:
                 self.agent.context.log.log(
                     type="hint",
@@ -171,7 +184,6 @@ class Planner(Tool):
                 "- `approve` — approve this plan and begin execution\n"
                 "- `revise: <your suggestions>` — request specific improvements\n"
             )
-            # break_loop=True ends the monologue and keeps the chat input active
             return Response(message=msg, break_loop=True)
 
         # ── approve ────────────────────────────────────────────────────────────
